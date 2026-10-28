@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -63,6 +64,7 @@ input,select,textarea{width:100%;padding:11px 13px;border-radius:12px;border:1px
 <script>
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const SUBJ=["Computer Science","Mathematics","Physics","Chemistry","Biology","English","Other"],TYPES=["Assignment","Homework","Notes","Project","Question"];
+const CLOUDINARY_NAME="y7wyblqg",CLOUDINARY_PRESET="cs1_uploads";
 const COL=["#5b3df5","#2f7bff","#e5384f","#0fa37f","#e08a00","#b13fd1"];
 const hash=s=>{let h=5381;for(const c of s)h=(h*33+c.charCodeAt(0))>>>0;return h.toString(36)};
 const note=(t,lines,c)=>"data:image/svg+xml;utf8,"+encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><rect width='800' height='800' fill='#fffdf5'/>${[...Array(14)].map((_,i)=>`<line x1='40' x2='760' y1='${150+i*46}' y2='${150+i*46}' stroke='#c9d7f5'/>`).join("")}<line x1='90' x2='90' y1='0' y2='800' stroke='#f2a3a3'/><text x='110' y='95' font-family='cursive' font-size='44' font-weight='bold' fill='${c}'>${t}</text>${lines.map((l,i)=>`<text x='110' y='${190+i*46}' font-family='cursive' font-size='30' fill='#2a3a6a'>${l}</text>`).join("")}</svg>`);
@@ -77,6 +79,10 @@ try{D=JSON.parse(localStorage.getItem("cs1"))}catch(e){}
 D=D&&D.users?D:seed();
 const save=()=>{try{localStorage.setItem("cs1",JSON.stringify(D));return true}catch(e){toast("Storage is full. Delete a post or use smaller photos.");return false}};
 const me=()=>D.users.find(u=>u.id===D.session),usr=n=>D.users.find(u=>u.username===n),post=i=>D.posts.find(p=>p.id===i);
+
+async function api(path,opts={}){const token=localStorage.getItem("cs1_token"),headers={"Content-Type":"application/json",...(opts.headers||{})};if(token)headers.Authorization="Bearer "+token;const r=await fetch(path,{...opts,headers});let data={};try{data=await r.json()}catch{}if(!r.ok)throw new Error(data.error||"Could not connect to CS1.");return data}
+async function refreshShared(){const token=localStorage.getItem("cs1_token");if(!token)return;const [ur,pr]=await Promise.all([api("/api/users"),api("/api/posts")]);const users=ur.users||[];D.users=users.map((u,i)=>({id:u.id,username:u.username,display:u.display_name||u.username,bio:u.bio||"",cls:"",school:"",email:u.email||"",pw:"",col:COL[i%COL.length],pic:u.avatar_url||"",follow:[]}));const current=me();if(current){current.follow=users.filter(u=>u.following).map(u=>u.id)}D.posts=(pr.posts||[]).map(p=>({id:String(p.id),user:p.user,imgs:p.imgs||[],cap:p.cap||"",subj:p.subj||"Other",type:p.type||"Question",tags:p.tags||[],t:p.t||Date.now(),likes:p.likes||[],comments:p.comments||[],saved:p.saved||[]}));}
+
 document.documentElement.dataset.theme=D.theme;
 function toast(m){const t=$("#tt");t.innerHTML=`<div class="toast">${esc(m)}</div>`;clearTimeout(toast.h);toast.h=setTimeout(()=>t.innerHTML="",2400)}
 function ago(t){const s=(Date.now()-t)/1000;return s<60?"just now":s<3600?Math.floor(s/60)+" min ago":s<86400?Math.floor(s/3600)+" h ago":new Date(t).toLocaleDateString()}
@@ -86,7 +92,7 @@ function go(n,a){V={n,a};pg=1;scrollTo(0,0);render()}
 function ntf(to,type,pid){const u=me();if(to===u.id)return;D.notifs.push({id:Date.now()+Math.random(),to,from:u.id,type,pid,t:Date.now(),read:false})}
 function render(){const u=me(),a=$("#app"),n=V.n;
 if(!u&&!["landing","signup","login","reset"].includes(n)){V={n:"landing"};return render()}
-if(n==="landing")return a.innerHTML=`<div class="hero"><div>${logo(72)}<h1 style="margin-top:14px">CS1</h1><p style="font-size:22px;margin:8px 0 6px"><b>Learn. Share. Grow.</b></p><p class="mu" style="max-width:420px;margin:0 auto 24px">Post your assignments, handwritten notes and projects as swipeable photo sets, and find what other students are sharing.</p><button class="btn ac" data-a="go" data-n="signup">Create account</button> <button class="btn o" data-a="go" data-n="login">Log in</button><p class="mu" style="margin-top:28px">Demo login: ana_codes / demo1234</p></div></div>`;
+if(n==="landing")return a.innerHTML=`<div class="hero"><div>${logo(72)}<h1 style="margin-top:14px">CS1</h1><p style="font-size:22px;margin:8px 0 6px"><b>Learn. Share. Grow.</b></p><p class="mu" style="max-width:420px;margin:0 auto 24px">Share your assignments, questions and ideas with students on one shared feed.</p><button class="btn ac" data-a="go" data-n="signup">Create account</button> <button class="btn o" data-a="go" data-n="login">Log in</button></div></div>`;
 if(["signup","login","reset"].includes(n))return a.innerHTML=authV(n);
 const nu=D.notifs.filter(x=>x.to===u.id&&!x.read).length;
 const nav=[["home","🏠","Home"],["explore","🔍","Explore"],["create","➕","Create Post"],["notifs","🔔","Notifications"],["saved","🔖","Saved Posts"],["profile","👤","Profile"],["settings","⚙️","Settings"]];
@@ -96,18 +102,18 @@ let body={home:homeV,explore:expV,post:postV,user:profV,profile:()=>profV(u.user
 a.innerHTML=`<div class="lay"><nav class="side"><div class="row" style="padding:6px 12px 18px">${logo(34)}<h2>CS1</h2></div>${nav.map(([k,i,l])=>`<button class="n ${on(k)?"on":""}" data-a="nav" data-n="${k}">${i} ${l}${k==="notifs"&&nu?` <span class="dot" style="position:static">${nu}</span>`:""}</button>`).join("")}</nav><main class="main">${body?body():nf()}</main></div><nav class="bot">${bn.map(([k,i])=>`<button class="${on(k)?"on":""}" aria-label="${k}" data-a="nav" data-n="${k}">${i}${k==="notifs"&&nu?`<span class="dot">${nu}</span>`:""}</button>`).join("")}</nav>`;
 const s=$("#sen");if(s)new IntersectionObserver(e=>{if(e[0].isIntersecting){pg++;render()}}).observe(s)}
 const nf=()=>`<div style="text-align:center;padding:60px 0"><h1 style="font-size:72px">404</h1><p class="mu">This page doesn’t exist, or the post was deleted.</p><button class="btn ac" data-a="nav" data-n="home">Back to home</button></div>`;
-function authV(n){const t={signup:"Create your account",login:"Welcome back",reset:"Reset password"}[n];return`<div class="auth"><div class="row" style="justify-content:center;margin-bottom:12px">${logo(40)}<h2>CS1</h2></div><div class="card pad"><h2 style="margin-bottom:10px">${t}</h2><div class="demo">Demo mode: accounts live only in this browser. Nothing is shared with other people or devices.</div><form id="af" data-k="${n}">${n==="signup"?`<label>Username<input name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_.]+" autocomplete="username"></label><label>Email<input name="email" type="email" required></label>`:`<label>${n==="login"?"Username or email":"Email"}<input name="id" required></label>`}<label>${n==="reset"?"New password":"Password"}<input name="pw" type="password" required minlength="8" autocomplete="${n==="login"?"current-password":"new-password"}"></label><div class="err" id="er"></div><button class="btn ac" style="width:100%">${{signup:"Sign up",login:"Log in",reset:"Save new password"}[n]}</button></form><p class="mu" style="text-align:center;margin-bottom:0">${n==="login"?`<a data-a="go" data-n="reset">Forgot password?</a> · <a data-a="go" data-n="signup">Sign up</a>`:`<a data-a="go" data-n="login">I have an account</a>`}</p></div></div>`}
+function authV(n){const t={signup:"Create your account",login:"Welcome back",reset:"Reset password"}[n];return`<div class="auth"><div class="row" style="justify-content:center;margin-bottom:12px">${logo(40)}<h2>CS1</h2></div><div class="card pad"><h2 style="margin-bottom:10px">${t}</h2><div class="demo">Your account and shared posts are saved online.</div><form id="af" data-k="${n}">${n==="signup"?`<label>Username<input name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+" autocomplete="username"></label><label>Email<input name="email" type="email" required></label>`:`<label>${n==="login"?"Username or email":"Email"}<input name="id" required></label>`}<label>${n==="reset"?"New password":"Password"}<input name="pw" type="password" required minlength="8" autocomplete="${n==="login"?"current-password":"new-password"}"></label><div class="err" id="er"></div><button class="btn ac" style="width:100%">${{signup:"Sign up",login:"Log in",reset:"Save new password"}[n]}</button></form><p class="mu" style="text-align:center;margin-bottom:0">${n==="login"?`<a data-a="go" data-n="reset">Forgot password?</a> · <a data-a="go" data-n="signup">Sign up</a>`:`<a data-a="go" data-n="login">I have an account</a>`}</p></div></div>`}
 function card(p,det){const u=usr(p.user),m=me(),L=p.likes.includes(m.id),S=p.saved.includes(m.id);
-return`<article class="card" id="c${p.id}"><div class="pad row"><a data-a="user" data-u="${esc(u.username)}" class="row" style="color:inherit">${av(u)}<div><b>${esc(u.username)}</b><div class="mu">${ago(p.t)}</div></div></a><span class="sp"></span><button data-a="menu" data-id="${p.id}" aria-label="More">⋯</button></div><div class="car"><div class="trk" data-id="${p.id}">${p.imgs.map((s,i)=>`<img src="${s}" alt="Photo ${i+1} of ${p.imgs.length}" data-a="zoom" data-s="${p.id}:${i}">`).join("")}</div>${p.imgs.length>1?`<div class="cnt" id="ct${p.id}">1/${p.imgs.length}</div><button class="arr p" data-a="sl" data-id="${p.id}" data-d="-1" aria-label="Previous">‹</button><button class="arr n" data-a="sl" data-id="${p.id}" data-d="1" aria-label="Next">›</button>`:""}</div><div class="pad"><div class="row act"><button class="${L?"on":""}" data-a="like" data-id="${p.id}" aria-label="Like">${L?"❤️":"🤍"}</button><button data-a="post" data-id="${p.id}" aria-label="Comments">💬</button><button data-a="share" data-id="${p.id}" aria-label="Share">🔗</button><span class="sp"></span><button data-a="sv" data-id="${p.id}" aria-label="Save">${S?"🔖":"📑"}</button></div><div><b>${p.likes.length} likes</b></div><div style="margin:6px 0"><span class="tag">${esc(p.subj)}</span><span class="tag">${esc(p.type)}</span></div><div><b>${esc(u.username)}</b> ${esc(p.cap)} ${p.tags.map(t=>`<a data-a="tag" data-t="${esc(t)}">#${esc(t)}</a>`).join(" ")}</div>${det?cmts(p):`<a class="mu" data-a="post" data-id="${p.id}">${p.comments.length?`View all ${p.comments.length} comments`:"Add a comment"}</a>`}</div></article>`}
+return`<article class="card" id="c${p.id}"><div class="pad row"><a data-a="user" data-u="${esc(u.username)}" class="row" style="color:inherit">${av(u)}<div><b>${esc(u.username)}</b><div class="mu">${ago(p.t)}</div></div></a><span class="sp"></span><button data-a="menu" data-id="${p.id}" aria-label="More">⋯</button></div>${p.imgs.length?`<div class="car"><div class="trk" data-id="${p.id}">${p.imgs.map((s,i)=>`<img src="${s}" alt="Photo ${i+1} of ${p.imgs.length}" data-a="zoom" data-s="${p.id}:${i}">`).join("")}</div>${p.imgs.length>1?`<div class="cnt" id="ct${p.id}">1/${p.imgs.length}</div><button class="arr p" data-a="sl" data-id="${p.id}" data-d="-1" aria-label="Previous">‹</button><button class="arr n" data-a="sl" data-id="${p.id}" data-d="1" aria-label="Next">›</button>`:""}</div>`:`<div style="padding:22px 18px;background:var(--bg);border-top:1px solid var(--ln);border-bottom:1px solid var(--ln);white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px">${esc(p.cap)}</div>`}<div class="pad"><div class="row act"><button class="${L?"on":""}" data-a="like" data-id="${p.id}" aria-label="Like">${L?"❤️":"🤍"}</button><button data-a="post" data-id="${p.id}" aria-label="Comments">💬</button><button data-a="share" data-id="${p.id}" aria-label="Share">🔗</button><span class="sp"></span><button class="${S?"on":""}" data-a="sv" data-id="${p.id}" aria-label="Save">${S?"🔖":"📑"}</button></div><div><b>${p.likes.length} likes</b></div><div style="margin:6px 0"><span class="tag">${esc(p.subj)}</span><span class="tag">${esc(p.type)}</span></div>${p.imgs.length?`<div><b>${esc(u.username)}</b> ${esc(p.cap)} ${p.tags.map(t=>`<a data-a="tag" data-t="${esc(t)}">#${esc(t)}</a>`).join(" ")}</div>`:`<div>${p.tags.map(t=>`<a data-a="tag" data-t="${esc(t)}">#${esc(t)}</a>`).join(" ")}</div>`}${det?cmts(p):`<a class="mu" data-a="post" data-id="${p.id}">${p.comments.length?`View all ${p.comments.length} comments`:"Add a comment"}</a>`}</div></article>`}
 function cmts(p){const m=me();return`<div style="margin-top:10px">${p.comments.map(c=>{const cu=usr(c.user)||{username:"deleted"};return`<div class="cm"><b>${esc(cu.username)}</b><span class="sp">${esc(c.text)}</span>${c.user===m.username?`<button class="mu" data-a="dcm" data-id="${p.id}" data-c="${c.id}">Delete</button>`:""}</div>`}).join("")||`<p class="mu">No comments yet. Start the conversation.</p>`}<form class="row" data-k="cm" data-id="${p.id}"><input name="t" placeholder="Add a comment…" maxlength="300" required style="margin:8px 0"><button class="btn ac s">Post</button></form></div>`}
-function homeV(){const m=me(),all=[...D.posts].sort((a,b)=>b.t-a.t),sl=all.slice(0,pg*4);return`<div class="demo">Demo mode: posts are stored in this browser only.</div>${sl.map(p=>card(p)).join("")||`<div class="card pad" style="text-align:center">No posts yet. Share your first notes.<br><br><button class="btn ac" data-a="nav" data-n="create">Create Post</button></div>`}${sl.length<all.length?`<div id="sen" class="mu" style="text-align:center">Loading more…</div>`:`<p class="mu" style="text-align:center">You’re all caught up.</p>`}<button class="btn ac" data-a="nav" data-n="create" style="position:fixed;right:18px;bottom:84px;border-radius:30px;box-shadow:var(--sh)">+ Create Post</button>`}
+function homeV(){const m=me(),all=[...D.posts].sort((a,b)=>b.t-a.t),sl=all.slice(0,pg*4);return`${sl.map(p=>card(p)).join("")||`<div class="card pad" style="text-align:center">No posts yet. Share your first notes.<br><br><button class="btn ac" data-a="nav" data-n="create">Create Post</button></div>`}${sl.length<all.length?`<div id="sen" class="mu" style="text-align:center">Loading more…</div>`:`<p class="mu" style="text-align:center">You’re all caught up.</p>`}<button class="btn ac" data-a="nav" data-n="create" style="position:fixed;right:18px;bottom:84px;border-radius:30px;box-shadow:var(--sh)">+ Create Post</button>`}
 function expV(){const q=filt.q.toLowerCase().replace(/^#/,""),tc={};D.posts.forEach(p=>p.tags.forEach(t=>tc[t]=(tc[t]||0)+1));
 let ps=D.posts.filter(p=>(!filt.s||p.subj===filt.s)&&(!filt.t||p.type===filt.t)&&(!q||(p.cap+" "+p.user+" "+p.tags.join(" ")).toLowerCase().includes(q)));
 const us=q?D.users.filter(u=>(u.username+u.display).toLowerCase().includes(q)):[];
 ps=[...ps].sort((a,b)=>b.likes.length-a.likes.length||b.t-a.t);
 const ch=(arr,k)=>`<div class="chips">${["",...arr].map(x=>`<button class="chip ${filt[k]===x?"on":""}" data-a="f" data-k="${k}" data-v="${esc(x)}">${x||"All"}</button>`).join("")}</div>`;
 return`<input id="sq" type="search" placeholder="Search users, posts, hashtags" value="${esc(filt.q)}">${ch(SUBJ,"s")}${ch(TYPES,"t")}<div class="chips">${Object.entries(tc).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([t])=>`<a class="chip" data-a="tag" data-t="${esc(t)}">#${esc(t)}</a>`).join("")}</div>${us.map(u=>`<a data-a="user" data-u="${esc(u.username)}" class="row card pad" style="color:inherit">${av(u)}<div><b>${esc(u.username)}</b><div class="mu">${esc(u.display)}</div></div></a>`).join("")}${grid(ps)||`<p class="mu">No matching posts. Try another filter.</p>`}`}
-const grid=ps=>ps.length?`<div class="grid">${ps.map(p=>`<div class="g" role="button" tabindex="0" data-a="post" data-id="${p.id}" style="background-image:url('${p.imgs[0]}')"><i>1/${p.imgs.length}</i></div>`).join("")}</div>`:"";
+const grid=ps=>ps.length?`<div class="grid">${ps.map(p=>`<div class="g" role="button" tabindex="0" data-a="post" data-id="${p.id}" style="${p.imgs[0]?`background-image:url('${p.imgs[0]}')`:'background:var(--card);border:1px solid var(--ln);display:flex;align-items:center;justify-content:center'}"><i>${p.imgs.length?`1/${p.imgs.length}`:esc(p.subj)}</i></div>`).join("")}</div>`:"";
 const postV=()=>{const p=post(V.a);return p?`<button class="btn o s" data-a="nav" data-n="home" style="margin-bottom:12px">← Back</button>${card(p,1)}`:nf()};
 function profV(name){const u=usr(name),m=me();if(!u)return nf();const ps=D.posts.filter(p=>p.user===u.username).sort((a,b)=>b.t-a.t),fr=D.users.filter(x=>x.follow.includes(u.id)).length;
 return`<div class="row" style="gap:18px;margin-bottom:16px">${av(u,"l")}<div class="sp"><h2>${esc(u.username)}</h2><div class="row mu" style="gap:14px;margin:6px 0"><span><b>${ps.length}</b> posts</span><a data-a="fl" data-u="${esc(u.username)}" data-k="ers"><b>${fr}</b> followers</a><a data-a="fl" data-u="${esc(u.username)}" data-k="ing"><b>${u.follow.length}</b> following</a></div>${u.id===m.id?`<button class="btn o s" data-a="nav" data-n="settings">Edit profile</button>`:`<button class="btn s ${m.follow.includes(u.id)?"o":"ac"}" data-a="fw" data-u="${esc(u.username)}">${m.follow.includes(u.id)?"Following":"Follow"}</button>`}</div></div><b>${esc(u.display)}</b><div>${esc(u.bio)}</div><div class="mu" style="margin-bottom:16px">${[u.cls,u.school].filter(Boolean).map(esc).join(" · ")}</div>${grid(ps)||`<p class="mu">No posts yet.</p>`}`}
@@ -118,47 +124,491 @@ function setV(){const u=me();return`<h2 style="margin-bottom:14px">Settings</h2>
 function modal(h){$("#ov").innerHTML=`<div class="ov" data-a="close"><div class="md" role="dialog" aria-modal="true">${h}</div></div>`}
 const close=()=>$("#ov").innerHTML="";
 function confirmD(t,b,fn){modal(`<h3>${t}</h3><p class="mu">${b}</p><div class="row" style="justify-content:flex-end"><button class="btn o" data-a="close">Cancel</button><button class="btn r" id="yes">Confirm</button></div>`);$("#yes").onclick=()=>{close();fn()}}
+
 let draft=[];
-function createM(){draft=[];modal(`<h3 style="margin-bottom:8px">Create Post</h3><form data-k="np"><input type="file" id="fi" accept="image/jpeg,image/png,image/webp" multiple><div class="mu">2 to 10 photos. JPG, PNG or WebP.</div><div class="bar"><i id="pb"></i></div><div class="pv" id="pv"></div><textarea name="cap" rows="3" maxlength="500" placeholder="Write a caption for all photos" required></textarea><div class="row"><select name="subj">${SUBJ.map(s=>`<option>${s}</option>`).join("")}</select><select name="type">${TYPES.map(s=>`<option>${s}</option>`).join("")}</select></div><input name="tags" placeholder="Hashtags, e.g. calculus revision"><div class="err" id="er"></div><div class="row" style="justify-content:flex-end"><button type="button" class="btn o" data-a="close">Cancel</button><button class="btn ac" id="pub">Publish</button></div></form>`)}
-function pvr(){$("#pv").innerHTML=draft.map((s,i)=>`<div style="background-image:url('${s}')"><button class="x" data-a="rm" data-i="${i}" aria-label="Remove">✕</button>${i?`<button class="l" data-a="mv" data-i="${i}" data-d="-1" aria-label="Move earlier">←</button>`:""}${i<draft.length-1?`<button class="rr" data-a="mv" data-i="${i}" data-d="1" aria-label="Move later">→</button>`:""}</div>`).join("")}
-function comp(f,max,q){return new Promise((ok,no)=>{const r=new FileReader;r.onerror=()=>no();r.onload=()=>{const im=new Image;im.onerror=()=>no();im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*k;c.height=im.height*k;c.getContext("2d").drawImage(im,0,0,c.width,c.height);ok(c.toDataURL("image/jpeg",q))};im.src=r.result};r.readAsDataURL(f)})}
-async function addFiles(fs){const er=$("#er");er.textContent="";for(let i=0;i<fs.length;i++){const f=fs[i];if(!/^image\/(jpeg|png|webp)$/.test(f.type)){er.textContent=`${f.name} isn’t a JPG, PNG or WebP image.`;continue}if(draft.length>=10){er.textContent="You can add up to 10 photos.";break}try{draft.push(await comp(f,1400,.82))}catch(e){er.textContent=`Couldn’t read ${f.name}.`}$("#pb").style.width=((i+1)/fs.length*100)+"%";pvr()}setTimeout(()=>{const b=$("#pb");if(b)b.style.width=0},600)}
-document.addEventListener("change",e=>{if(e.target.id==="fi")addFiles([...e.target.files]);if(e.target.id==="pp"&&e.target.files[0])comp(e.target.files[0],300,.85).then(d=>{me().pic=d;save();render();toast("Profile picture updated")}).catch(()=>toast("Couldn’t read that image"));if(e.target.id==="sq"){}});
-document.addEventListener("input",e=>{if(e.target.id==="sq"){filt.q=e.target.value;clearTimeout(input.h);input.h=setTimeout(()=>{render();const s=$("#sq");s.focus();s.setSelectionRange(99,99)},250)}});const input={};
-document.addEventListener("submit",e=>{e.preventDefault();const f=e.target,k=f.dataset.k,d=Object.fromEntries(new FormData(f)),er=$("#er"),E=m=>{if(er)er.textContent=m};
-if(k==="signup"){const un=d.username.trim();if(usr(un)||D.users.some(u=>u.email===d.email.toLowerCase()))return E("That username or email is already taken.");D.users.push({id:un,username:un,display:un,bio:"",cls:"",school:"",email:d.email.toLowerCase(),pw:hash(d.pw),col:COL[D.users.length%6],pic:"",follow:[]});D.session=un;save();go("home")}
-if(k==="login"){const u=D.users.find(x=>(x.username===d.id||x.email===d.id.toLowerCase())&&x.pw===hash(d.pw));if(!u)return E("Wrong username or password.");D.session=u.id;save();go("home")}
-if(k==="reset"){const u=D.users.find(x=>x.email===d.id.toLowerCase());if(!u)return E("No account uses that email in this browser.");u.pw=hash(d.pw);save();toast("Password updated. Log in with it now.");go("login")}
-if(k==="cm"){const p=post(f.dataset.id),t=d.t.trim(),m=me();if(!t)return;if(busy.c&&Date.now()-busy.c<3000)return toast("Slow down a little before commenting again.");if(p.comments.some(c=>c.user===m.username&&c.text===t))return toast("You already posted that comment.");busy.c=Date.now();p.comments.push({id:Date.now(),user:m.username,text:t});ntf(usr(p.user).id,"comment",p.id);save();render()}
-if(k==="prof"){Object.assign(me(),{display:d.display.trim(),bio:d.bio.trim(),cls:d.cls.trim(),school:d.school.trim()});save();render();toast("Profile saved")}
-if(k==="np"){if(draft.length<2)return E("Add at least 2 photos.");if(busy.p&&Date.now()-busy.p<10000)return E("Please wait a few seconds before posting again.");const tags=[...new Set((d.tags||"").split(/[\s,#]+/).filter(Boolean).map(t=>t.toLowerCase().slice(0,24)))].slice(0,8);D.posts.push({id:"p"+Date.now(),user:me().username,imgs:draft,cap:d.cap.trim(),subj:d.subj,type:d.type,tags,t:Date.now(),likes:[],comments:[],saved:[]});if(!save()){D.posts.pop();return E("Couldn’t save. Try fewer or smaller photos.")}busy.p=Date.now();close();go("home");toast("Published")}});
-document.addEventListener("scroll",e=>{const t=e.target;if(t.classList&&t.classList.contains("trk")){const c=$("#ct"+t.dataset.id);if(c)c.textContent=(Math.round(t.scrollLeft/t.clientWidth)+1)+"/"+t.children.length}},true);
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){close();$(".lb")?.remove()}if(e.key==="Enter"&&e.target.dataset?.a==="post")e.target.click()});
-document.addEventListener("click",e=>{const el=e.target.closest("[data-a]");if(!el)return;const a=el.dataset.a,d=el.dataset,m=D.session&&me();
-if(a==="close"){if(el.classList.contains("ov")&&e.target!==el)return;return close()}
-if(a==="go")return go(d.n);
-if(a==="nav"){if(d.n==="create")return createM();return go(d.n)}
-if(a==="user")return go("user",d.u);if(a==="post"){close();return go("post",d.id)}
-if(a==="tag"){filt={s:"",t:"",q:"#"+d.t};return go("explore")}
-if(a==="f"){filt[d.k]=d.v;return render()}
-if(a==="sl"){const t=document.querySelector(`.trk[data-id="${d.id}"]`);return t.scrollBy({left:t.clientWidth*d.d,behavior:"smooth"})}
-if(a==="zoom"){const[i,n]=d.s.split(":");const p=post(i);$("#ov").insertAdjacentHTML("beforeend",`<div class="lb" data-a="lb"><img src="${p.imgs[n]}" alt="Zoomed photo ${+n+1}"></div>`);return}
-if(a==="lb"){if(e.target.tagName==="IMG")return el.classList.toggle("z");return el.remove()}
-if(a==="like"){const p=post(d.id),i=p.likes.indexOf(m.id);i<0?(p.likes.push(m.id),ntf(usr(p.user).id,"like",p.id)):p.likes.splice(i,1);save();return render()}
-if(a==="sv"){const p=post(d.id),i=p.saved.indexOf(m.id);i<0?p.saved.push(m.id):p.saved.splice(i,1);save();toast(i<0?"Saved":"Removed from saved");return render()}
-if(a==="share"){const u=location.href.split("#")[0];(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>toast("Link copied"),()=>toast("Copy this page’s address to share it"));return}
-if(a==="dcm"){const p=post(d.id);p.comments=p.comments.filter(c=>c.id!=d.c);save();return render()}
-if(a==="menu"){const p=post(d.id);return modal(`<h3>Post options</h3><div class="row" style="flex-direction:column;align-items:stretch;margin-top:12px">${p.user===m.username?`<button class="btn r" data-a="dp" data-id="${p.id}">Delete post</button>`:`<button class="btn o" data-a="rp" data-id="${p.id}">Report post</button>`}<button class="btn o" data-a="close">Cancel</button></div>`)}
-if(a==="dp")return confirmD("Delete this post?","This can’t be undone.",()=>{D.posts=D.posts.filter(p=>p.id!==d.id);save();go(V.n==="post"?"home":V.n,V.a);toast("Post deleted")});
-if(a==="rp"){close();return toast("Reported. Thanks for keeping CS1 safe.")}
-if(a==="fw"){const u=usr(d.u),i=m.follow.indexOf(u.id);i<0?(m.follow.push(u.id),ntf(u.id,"follow")):m.follow.splice(i,1);save();return render()}
-if(a==="fl"){const u=usr(d.u),l=d.k==="ers"?D.users.filter(x=>x.follow.includes(u.id)):u.follow.map(id=>D.users.find(x=>x.id===id)).filter(Boolean);return modal(`<h3>${d.k==="ers"?"Followers":"Following"}</h3>${l.map(x=>`<a class="row" style="margin:10px 0;color:inherit" data-a="user" data-u="${esc(x.username)}">${av(x)}<b>${esc(x.username)}</b></a>`).join("")||`<p class="mu">No one yet.</p>`}`)}
-if(a==="rm"){draft.splice(+d.i,1);return pvr()}
-if(a==="mv"){const i=+d.i,j=i+ +d.d;[draft[i],draft[j]]=[draft[j],draft[i]];return pvr()}
-if(a==="theme"){D.theme=D.theme==="dark"?"light":"dark";document.documentElement.dataset.theme=D.theme;save();return render()}
-if(a==="logout")return confirmD("Log out?","You can log back in any time.",()=>{D.session=null;save();go("landing")});
-if(a==="del")return confirmD("Delete your account?","Your profile, posts and comments will be removed permanently.",()=>{const u=m;D.posts=D.posts.filter(p=>p.user!==u.username);D.posts.forEach(p=>{p.comments=p.comments.filter(c=>c.user!==u.username);p.likes=p.likes.filter(x=>x!==u.id);p.saved=p.saved.filter(x=>x!==u.id)});D.users=D.users.filter(x=>x.id!==u.id);D.users.forEach(x=>x.follow=x.follow.filter(i=>i!==u.id));D.notifs=D.notifs.filter(n=>n.to!==u.id&&n.from!==u.id);D.session=null;save();go("landing")});
+
+function createM(){
+  draft=[];
+  modal(`<h3 style="margin-bottom:8px">Create Post</h3>
+  <form data-k="np">
+  <label>Photos <span class="mu">(2–10 images)</span>
+  <input id="fi" type="file" accept="image/jpeg,image/png,image/webp" multiple required></label>
+  <div class="pv" id="pv"></div>
+  <div class="bar" style="margin:8px 0 12px"><i id="pb"></i></div>
+  <textarea name="cap" rows="4" maxlength="500" placeholder="Write a caption…" required></textarea>
+  <div class="row">
+  <select name="subj">${SUBJ.map(s=>`<option>${s}</option>`).join("")}</select>
+  <select name="type">${TYPES.map(s=>`<option>${s}</option>`).join("")}</select>
+  </div>
+  <input name="tags" placeholder="Hashtags, e.g. calculus revision">
+  <div class="err" id="er"></div>
+  <div class="row" style="justify-content:flex-end">
+  <button type="button" class="btn o" data-a="close">Cancel</button>
+  <button class="btn ac" id="pub">Publish</button>
+  </div></form>`);
+}
+
+function pvr(){
+  $("#pv").innerHTML=draft.map((s,i)=>`
+    <div style="background-image:url('${s}')">
+    <button class="x" data-a="rm" data-i="${i}" aria-label="Remove">✕</button>
+    ${i?`<button class="l" data-a="mv" data-i="${i}" data-d="-1">←</button>`:""}
+    ${i<draft.length-1?`<button class="rr" data-a="mv" data-i="${i}" data-d="1">→</button>`:""}
+    </div>`).join("");
+}
+
+function comp(f,max,q){
+  return new Promise((ok,no)=>{
+    const r=new FileReader();
+    r.onerror=()=>no();
+    r.onload=()=>{
+      const im=new Image();
+      im.onerror=()=>no();
+      im.onload=()=>{
+        const k=Math.min(1,max/Math.max(im.width,im.height));
+        const c=document.createElement("canvas");
+        c.width=im.width*k;
+        c.height=im.height*k;
+        c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+        ok(c.toDataURL("image/jpeg",q));
+      };
+      im.src=r.result;
+    };
+    r.readAsDataURL(f);
+  });
+}
+
+async function addFiles(fs){
+  const er=$("#er");
+  if(!er)return;
+  er.textContent="";
+  draft=[];
+  const b=$("#pb");
+  if(fs.length>10){
+    er.textContent="Choose no more than 10 photos.";
+    return;
+  }
+  for(let i=0;i<fs.length;i++){
+    const f=fs[i];
+    if(!/^image\/(jpeg|png|webp)$/.test(f.type)){
+      er.textContent=`${f.name} isn’t a JPG, PNG or WebP image.`;
+      continue;
+    }
+    if(f.size>12*1024*1024){
+      er.textContent=`${f.name} is too large (max 12 MB each).`;
+      continue;
+    }
+    try{
+      draft.push(await comp(f,1400,.82));
+    }catch(e){
+      er.textContent=`Couldn’t read ${f.name}.`;
+    }
+    if(b)b.style.width=((i+1)/fs.length*100)+"%";
+    pvr();
+  }
+  if(b)setTimeout(()=>{b.style.width=0},600);
+  if(draft.length<2)er.textContent="Choose at least 2 valid photos.";
+}
+
+async function uploadDraftImages(){
+  const urls=[];
+  const er=$("#er");
+  for(let i=0;i<draft.length;i++){
+    if(er)er.textContent=`Uploading photo ${i+1} of ${draft.length}…`;
+    const fd=new FormData();
+    fd.append("file",draft[i]);
+    fd.append("upload_preset",CLOUDINARY_PRESET);
+    const r=await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_NAME}/image/upload`,
+      {method:"POST",body:fd}
+    );
+    let out={};
+    try{out=await r.json()}catch{}
+    if(!r.ok||!out.secure_url)
+      throw new Error(out.error?.message||`Photo ${i+1} failed to upload.`);
+    urls.push(out.secure_url);
+    const b=$("#pb");
+    if(b)b.style.width=Math.round((i+1)/draft.length*100)+"%";
+  }
+  return urls;
+}
+
+document.addEventListener("change",e=>{
+  if(e.target.id==="fi")addFiles([...e.target.files]);
+  if(e.target.id==="pp"&&e.target.files[0])
+    comp(e.target.files[0],300,.85).then(d=>{
+      me().pic=d;save();render();toast("Profile picture updated");
+    }).catch(()=>toast("Couldn’t read that image"));
+  if(e.target.id==="sq"){}
 });
-if(D.session&&me())V={n:"home"};else D.session=null;
-render();
-</script></body></html>
+
+document.addEventListener("input",e=>{
+  if(e.target.id==="sq"){
+    filt.q=e.target.value;
+    clearTimeout(input.h);
+    input.h=setTimeout(()=>{
+      render();
+      const s=$("#sq");
+      s.focus();
+      s.setSelectionRange(99,99);
+    },250);
+  }
+});
+const input={};
+
+document.addEventListener("submit",async e=>{
+  e.preventDefault();
+  const f=e.target,k=f.dataset.k,d=Object.fromEntries(new FormData(f)),er=$("#er");
+  const E=m=>{if(er)er.textContent=m};
+
+  if(k==="signup"||k==="login"){
+    const submit=f.querySelector('button[type="submit"],button:not([type])');
+    if(submit){
+      submit.disabled=true;
+      submit.textContent=k==="signup"?"Creating account…":"Logging in…";
+    }
+    try{
+      const payload=k==="signup"
+        ? {username:d.username.trim(),display_name:d.username.trim(),email:d.email.trim().toLowerCase(),password:d.pw}
+        : {login:d.id.trim().toLowerCase(),password:d.pw};
+      const response=await fetch(`/api/${k==="signup"?"register":"login"}`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(payload)
+      });
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||"Could not connect to your account.");
+      localStorage.setItem("cs1_token",result.token);
+      const u=result.user;
+      const localUser={
+        id:u.id,username:u.username,display:u.display_name||u.username,
+        bio:u.bio||"",cls:"",school:"",email:u.email||"",pw:"",
+        col:COL[D.users.length%6],pic:u.avatar_url||"",follow:[]
+      };
+      D.users=D.users.filter(x=>x.id!==u.id&&x.username!==u.username);
+      D.users.push(localUser);
+      D.session=u.id;
+      save();
+      await refreshShared();
+      go("home");
+    }catch(err){
+      E(err.message||"Something went wrong. Please try again.");
+    }finally{
+      if(submit){
+        submit.disabled=false;
+        submit.textContent=k==="signup"?"Sign up":"Log in";
+      }
+    }
+    return;
+  }
+
+  if(k==="reset"){
+    return E("Password reset is not connected yet. Please contact the site owner for help.");
+  }
+
+  if(k==="cm"){
+    const t=d.t.trim();
+    if(!t)return;
+    try{
+      await api(`/api/posts/${f.dataset.id}/comments`,{
+        method:"POST",body:JSON.stringify({content:t})
+      });
+      await refreshShared();
+      render();
+    }catch(err){toast(err.message)}
+  }
+
+  if(k==="prof"){
+    try{
+      await api("/api/profile",{
+        method:"POST",
+        body:JSON.stringify({display_name:d.display.trim(),bio:d.bio.trim()})
+      });
+      await refreshShared();
+      render();
+      toast("Profile saved");
+    }catch(err){E(err.message)}
+  }
+
+  if(k==="np"){
+    if(!d.cap.trim())return E("Write a caption before publishing.");
+    if(draft.length<2||draft.length>10)return E("Add between 2 and 10 photos.");
+    if(busy.p&&Date.now()-busy.p<3000)return E("Please wait a few seconds before posting again.");
+    const submit=f.querySelector("#pub");
+    if(submit){submit.disabled=true;submit.textContent="Uploading…"}
+    try{
+      const imgs=await uploadDraftImages();
+      if(er)er.textContent="Saving post…";
+      await api("/api/posts",{
+        method:"POST",
+        body:JSON.stringify({
+          caption:d.cap.trim(),subject:d.subj,post_type:d.type,
+          tags:d.tags||"",imgs
+        })
+      });
+      busy.p=Date.now();
+      await refreshShared();
+      close();
+      go("home");
+      toast("Published with photos!");
+    }catch(err){
+      E(err.message||"Upload failed. Please try again.");
+    }finally{
+      if(submit){submit.disabled=false;submit.textContent="Publish"}
+    }
+  }
+});
+
+document.addEventListener("scroll",e=>{
+  const t=e.target;
+  if(t.classList&&t.classList.contains("trk")){
+    const c=$("#ct"+t.dataset.id);
+    if(c)c.textContent=(Math.round(t.scrollLeft/t.clientWidth)+1)+"/"+t.children.length;
+  }
+},true);
+
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){
+    close();
+    $(".lb")?.remove();
+  }
+  if(e.key==="Enter"&&e.target.dataset?.a==="post")e.target.click();
+});
+
+document.addEventListener("click",e=>{
+  const el=e.target.closest("[data-a]");
+  if(!el)return;
+
+  const a=el.dataset.a,d=el.dataset,m=D.session&&me();
+
+  if(a==="close"){
+    if(el.classList.contains("ov")&&e.target!==el)return;
+    return close();
+  }
+
+  if(a==="go")return go(d.n);
+  if(a==="nav"){
+    if(d.n==="create")return createM();
+    return go(d.n);
+  }
+
+  if(a==="user")return go("user",d.u);
+  if(a==="post"){
+    close();
+    return go("post",d.id);
+  }
+
+  if(a==="tag"){
+    filt={s:"",t:"",q:"#"+d.t};
+    return go("explore");
+  }
+
+  if(a==="f"){
+    filt[d.k]=d.v;
+    return render();
+  }
+
+  if(a==="sl"){
+    const t=document.querySelector(`.trk[data-id="${d.id}"]`);
+    if(t)t.scrollBy({left:t.clientWidth*Number(d.d),behavior:"smooth"});
+    return;
+  }
+
+  if(a==="zoom"){
+    const [i,n]=d.s.split(":");
+    const p=post(i);
+    if(!p)return;
+    $("#ov").insertAdjacentHTML(
+      "beforeend",
+      `<div class="lb" data-a="lb"><img src="${p.imgs[n]}" alt="Zoomed photo"></div>`
+    );
+    return;
+  }
+
+  if(a==="lb"){
+    if(e.target.tagName==="IMG")return el.classList.toggle("z");
+    return el.remove();
+  }
+
+  if(a==="like"){
+    api(`/api/posts/${d.id}/like`,{method:"POST"})
+      .then(()=>refreshShared())
+      .then(render)
+      .catch(err=>toast(err.message));
+    return;
+  }
+
+  if(a==="sv"){
+    api(`/api/posts/${d.id}/bookmark`,{method:"POST"})
+      .then(()=>refreshShared())
+      .then(()=>{toast("Bookmarks updated");render()})
+      .catch(err=>toast(err.message));
+    return;
+  }
+
+  if(a==="share"){
+    const u=location.href.split("#")[0];
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(u)
+        .then(()=>toast("Link copied"))
+        .catch(()=>toast("Copy this page’s address to share it"));
+    }else{
+      toast("Copy this page’s address to share it");
+    }
+    return;
+  }
+
+  if(a==="dcm"){
+    api(`/api/comments/${d.c}`,{method:"DELETE"})
+      .then(()=>refreshShared())
+      .then(render)
+      .catch(err=>toast(err.message));
+    return;
+  }
+
+  if(a==="menu"){
+    const p=post(d.id);
+    if(!p)return;
+    return modal(`<h3>Post options</h3>
+      <div class="row" style="flex-direction:column;align-items:stretch;margin-top:12px">
+      ${p.user===m.username
+        ?`<button class="btn r" data-a="dp" data-id="${p.id}">Delete post</button>`
+        :`<button class="btn o" data-a="rp" data-id="${p.id}">Report post</button>`}
+      <button class="btn o" data-a="close">Cancel</button>
+      </div>`);
+  }
+
+  if(a==="dp"){
+    return confirmD("Delete this post?","This can’t be undone.",async()=>{
+      try{
+        await api(`/api/posts/${d.id}`,{method:"DELETE"});
+        await refreshShared();
+        go("home");
+        toast("Post deleted");
+      }catch(err){toast(err.message)}
+    });
+  }
+
+  if(a==="rp"){
+    close();
+    return toast("Reported. Thanks for keeping CS1 safe.");
+  }
+
+  if(a==="fw"){
+    const u=usr(d.u);
+    if(!u)return;
+    api(`/api/users/${u.id}/follow`,{method:"POST"})
+      .then(()=>refreshShared())
+      .then(render)
+      .catch(err=>toast(err.message));
+    return;
+  }
+
+  if(a==="fl"){
+    const u=usr(d.u);
+    if(!u)return;
+    const l=d.k==="ers"
+      ?D.users.filter(x=>x.follow.includes(u.id))
+      :u.follow.map(id=>D.users.find(x=>x.id===id)).filter(Boolean);
+
+    return modal(`<h3>${d.k==="ers"?"Followers":"Following"}</h3>
+      ${l.map(x=>`<a class="row" style="margin:10px 0;color:inherit" data-a="user" data-u="${esc(x.username)}">${av(x)}<b>${esc(x.username)}</b></a>`).join("")||`<p class="mu">No one yet.</p>`}`);
+  }
+
+  if(a==="rm"){
+    draft.splice(+d.i,1);
+    return pvr();
+  }
+
+  if(a==="mv"){
+    const i=+d.i,j=i+Number(d.d);
+    if(j<0||j>=draft.length)return;
+    [draft[i],draft[j]]=[draft[j],draft[i]];
+    return pvr();
+  }
+
+  if(a==="theme"){
+    D.theme=D.theme==="dark"?"light":"dark";
+    document.documentElement.dataset.theme=D.theme;
+    save();
+    return render();
+  }
+
+  if(a==="logout"){
+    return confirmD("Log out?","You can log back in any time.",async()=>{
+      const token=localStorage.getItem("cs1_token");
+      try{
+        if(token)await fetch("/api/logout",{
+          method:"POST",
+          headers:{Authorization:"Bearer "+token}
+        });
+      }catch{}
+      localStorage.removeItem("cs1_token");
+      D.session=null;
+      save();
+      go("landing");
+    });
+  }
+
+  if(a==="del"){
+    return confirmD("Delete your account?","Your profile, posts and comments will be removed permanently.",async()=>{
+      try{
+        await api("/api/account",{method:"DELETE"});
+        localStorage.removeItem("cs1_token");
+        D.session=null;
+        D.posts=[];
+        D.users=[];
+        go("landing");
+        toast("Account deleted");
+      }catch(err){toast(err.message)}
+    });
+  }
+});
+
+async function restoreOnlineSession(){
+  const token=localStorage.getItem("cs1_token");
+  if(!token){
+    D.session=null;
+    render();
+    return;
+  }
+
+  try{
+    const response=await fetch("/api/me",{
+      headers:{Authorization:"Bearer "+token}
+    });
+    const result=await response.json();
+
+    if(!response.ok||!result.user)throw new Error("Session expired");
+
+    const u=result.user;
+    const localUser={
+      id:u.id,
+      username:u.username,
+      display:u.display_name||u.username,
+      bio:u.bio||"",
+      cls:"",
+      school:"",
+      email:u.email||"",
+      pw:"",
+      col:COL[D.users.length%COL.length],
+      pic:u.avatar_url||"",
+      follow:[]
+    };
+
+    D.users=D.users.filter(x=>x.id!==u.id&&x.username!==u.username);
+    D.users.push(localUser);
+    D.session=u.id;
+    save();
+    V={n:"home"};
+    await refreshShared();
+  }catch{
+    localStorage.removeItem("cs1_token");
+    D.session=null;
+    save();
+  }
+
+  render();
+}
+
+restoreOnlineSession();
